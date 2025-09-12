@@ -21,7 +21,10 @@ export function GameArea({ onFruitSpawn, spawnedFruits, cooldownMs, lastClickTim
   const isReady = timeUntilNext === 0;
 
   const handleClick = (e: React.MouseEvent) => {
-    onFruitSpawn(e.clientX, e.clientY);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    onFruitSpawn(x, y);
   };
 
   return (
