@@ -27,8 +27,9 @@ export function GameArea({
 
   const handleClick = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Generate random position within the game area
+    const x = Math.random() * rect.width;
+    const y = Math.random() * rect.height;
     onFruitSpawn(x, y);
   };
 
