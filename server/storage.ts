@@ -1,6 +1,13 @@
-import { users, userFruits, type User, type InsertUser, type UserFruit, type InsertUserFruit } from "@shared/schema";
+import { 
+  users, userFruits, marketplaceListings, autoclickers, userAutoclickers, tradeOffers,
+  type User, type InsertUser, type UserFruit, type InsertUserFruit,
+  type MarketplaceListing, type InsertMarketplaceListing,
+  type Autoclicker, type InsertAutoclicker,
+  type UserAutoclicker, type InsertUserAutoclicker,
+  type TradeOffer, type InsertTradeOffer
+} from "@shared/schema";
 import { db } from "./db";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
@@ -10,13 +17,42 @@ type SessionStore = session.Store;
 const PostgresSessionStore = connectPg(session);
 
 export interface IStorage {
+  // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUserCoins(userId: string, amount: number): Promise<void>;
+  
+  // User fruits operations
   getUserFruits(userId: string): Promise<UserFruit[]>;
   addFruitToUser(userFruit: InsertUserFruit): Promise<UserFruit>;
   incrementUserFruit(userId: string, fruitId: string): Promise<UserFruit>;
+  decrementUserFruit(userId: string, fruitId: string, amount: number): Promise<boolean>;
   incrementTotalFruits(userId: string): Promise<void>;
+  
+  // Marketplace operations
+  getMarketplaceListings(): Promise<MarketplaceListing[]>;
+  getMarketplaceListingById(listingId: string): Promise<MarketplaceListing | undefined>;
+  createMarketplaceListing(listing: InsertMarketplaceListing): Promise<MarketplaceListing>;
+  deleteMarketplaceListing(listingId: string): Promise<void>;
+  buyMarketplaceListing(buyerId: string, listingId: string): Promise<{ success: boolean; message: string }>;
+  
+  // Autoclicker operations
+  getAutoclickers(): Promise<Autoclicker[]>;
+  getAutoclickerById(autoclickerId: string): Promise<Autoclicker | undefined>;
+  createAutoclicker(autoclicker: InsertAutoclicker): Promise<Autoclicker>;
+  getUserAutoclickers(userId: string): Promise<UserAutoclicker[]>;
+  purchaseAutoclicker(userAutoclicker: InsertUserAutoclicker): Promise<UserAutoclicker>;
+  purchaseAutoclickerWithCoins(userId: string, autoclickerId: string): Promise<{ success: boolean; message: string }>;
+  
+  // Trading operations
+  getTradeOffers(userId: string): Promise<TradeOffer[]>;
+  getTradeOfferById(tradeId: string): Promise<TradeOffer | undefined>;
+  createTradeOffer(tradeOffer: InsertTradeOffer): Promise<TradeOffer>;
+  acceptTradeOffer(tradeId: string): Promise<void>;
+  rejectTradeOffer(tradeId: string): Promise<void>;
+  acceptTradeOfferWithTransfer(tradeId: string): Promise<{ success: boolean; message: string }>;
+  
   sessionStore: SessionStore;
 }
 
@@ -85,6 +121,364 @@ export class DatabaseStorage implements IStorage {
       .update(users)
       .set({ totalFruits: sql`${users.totalFruits} + 1` })
       .where(eq(users.id, userId));
+  }
+
+  async updateUserCoins(userId: string, amount: number): Promise<void> {
+    await db
+      .update(users)
+      .set({ coins: sql`${users.coins} + ${amount}` })
+      .where(eq(users.id, userId));
+  }
+
+  async decrementUserFruit(userId: string, fruitId: string, amount: number): Promise<boolean> {
+    const existingFruits = await db
+      .select()
+      .from(userFruits)
+      .where(and(eq(userFruits.userId, userId), eq(userFruits.fruitId, fruitId)));
+    
+    const [existingFruit] = existingFruits;
+    if (!existingFruit || !existingFruit.quantity || existingFruit.quantity < amount) {
+      return false; // Not enough fruits
+    }
+
+    const newQuantity = existingFruit.quantity - amount;
+    if (newQuantity <= 0) {
+      await db.delete(userFruits).where(eq(userFruits.id, existingFruit.id));
+    } else {
+      await db
+        .update(userFruits)
+        .set({ quantity: newQuantity })
+        .where(eq(userFruits.id, existingFruit.id));
+    }
+    return true;
+  }
+
+  // Marketplace operations
+  async getMarketplaceListings(): Promise<MarketplaceListing[]> {
+    return await db.select().from(marketplaceListings);
+  }
+
+  async getMarketplaceListingById(listingId: string): Promise<MarketplaceListing | undefined> {
+    const [listing] = await db.select().from(marketplaceListings).where(eq(marketplaceListings.id, listingId));
+    return listing || undefined;
+  }
+
+  async createMarketplaceListing(listing: InsertMarketplaceListing): Promise<MarketplaceListing> {
+    const [created] = await db
+      .insert(marketplaceListings)
+      .values(listing)
+      .returning();
+    return created;
+  }
+
+  async deleteMarketplaceListing(listingId: string): Promise<void> {
+    await db.delete(marketplaceListings).where(eq(marketplaceListings.id, listingId));
+  }
+
+  async buyMarketplaceListing(buyerId: string, listingId: string): Promise<{ success: boolean; message: string }> {
+    return await db.transaction(async (tx) => {
+      try {
+        // Get the listing and validate it exists
+        const [listing] = await tx.select().from(marketplaceListings).where(eq(marketplaceListings.id, listingId));
+        if (!listing) {
+          return { success: false, message: "Listing not found" };
+        }
+
+        // Prevent users from buying their own listings
+        if (listing.sellerId === buyerId) {
+          return { success: false, message: "Cannot buy your own listing" };
+        }
+
+        // Calculate total cost
+        const totalCost = listing.pricePerUnit * listing.quantity;
+
+        // Get buyer's current coins and validate sufficient funds
+        const [buyer] = await tx.select().from(users).where(eq(users.id, buyerId));
+        if (!buyer || !buyer.coins || buyer.coins < totalCost) {
+          return { success: false, message: "Insufficient coins" };
+        }
+
+        // Deduct coins from buyer with conditional update to prevent race conditions
+        const buyerUpdateResult = await tx
+          .update(users)
+          .set({ coins: sql`${users.coins} - ${totalCost}` })
+          .where(and(eq(users.id, buyerId), sql`${users.coins} >= ${totalCost}`))
+          .returning();
+
+        if (buyerUpdateResult.length === 0) {
+          return { success: false, message: "Insufficient coins (race condition)" };
+        }
+
+        // Add coins to seller
+        await tx
+          .update(users)
+          .set({ coins: sql`${users.coins} + ${totalCost}` })
+          .where(eq(users.id, listing.sellerId));
+
+        // Transfer fruit to buyer
+        const existingBuyerFruit = await tx
+          .select()
+          .from(userFruits)
+          .where(and(eq(userFruits.userId, buyerId), eq(userFruits.fruitId, listing.fruitId)));
+
+        if (existingBuyerFruit.length > 0) {
+          // Update existing fruit quantity
+          await tx
+            .update(userFruits)
+            .set({ quantity: sql`${userFruits.quantity} + ${listing.quantity}` })
+            .where(eq(userFruits.id, existingBuyerFruit[0].id));
+        } else {
+          // Create new fruit entry for buyer
+          await tx
+            .insert(userFruits)
+            .values({
+              userId: buyerId,
+              fruitId: listing.fruitId,
+              quantity: listing.quantity
+            });
+        }
+
+        // Remove the listing
+        await tx.delete(marketplaceListings).where(eq(marketplaceListings.id, listingId));
+
+        return { success: true, message: "Purchase completed successfully" };
+      } catch (error) {
+        console.error('Error in buyMarketplaceListing:', error);
+        return { success: false, message: "Transaction failed" };
+      }
+    });
+  }
+
+  // Autoclicker operations
+  async getAutoclickers(): Promise<Autoclicker[]> {
+    return await db.select().from(autoclickers);
+  }
+
+  async getAutoclickerById(autoclickerId: string): Promise<Autoclicker | undefined> {
+    const [autoclicker] = await db.select().from(autoclickers).where(eq(autoclickers.id, autoclickerId));
+    return autoclicker || undefined;
+  }
+
+  async createAutoclicker(autoclicker: InsertAutoclicker): Promise<Autoclicker> {
+    const [created] = await db
+      .insert(autoclickers)
+      .values(autoclicker)
+      .returning();
+    return created;
+  }
+
+  async getUserAutoclickers(userId: string): Promise<UserAutoclicker[]> {
+    return await db.select().from(userAutoclickers).where(eq(userAutoclickers.userId, userId));
+  }
+
+  async purchaseAutoclicker(userAutoclicker: InsertUserAutoclicker): Promise<UserAutoclicker> {
+    const [created] = await db
+      .insert(userAutoclickers)
+      .values(userAutoclicker)
+      .returning();
+    return created;
+  }
+
+  // Trading operations
+  async getTradeOffers(userId: string): Promise<TradeOffer[]> {
+    return await db
+      .select()
+      .from(tradeOffers)
+      .where(sql`${tradeOffers.senderId} = ${userId} OR ${tradeOffers.receiverId} = ${userId}`);
+  }
+
+  async getTradeOfferById(tradeId: string): Promise<TradeOffer | undefined> {
+    const [trade] = await db.select().from(tradeOffers).where(eq(tradeOffers.id, tradeId));
+    return trade || undefined;
+  }
+
+  async createTradeOffer(tradeOffer: InsertTradeOffer): Promise<TradeOffer> {
+    const [created] = await db
+      .insert(tradeOffers)
+      .values(tradeOffer)
+      .returning();
+    return created;
+  }
+
+  async acceptTradeOffer(tradeId: string): Promise<void> {
+    await db
+      .update(tradeOffers)
+      .set({ status: 'accepted', respondedAt: sql`NOW()` })
+      .where(eq(tradeOffers.id, tradeId));
+  }
+
+  async rejectTradeOffer(tradeId: string): Promise<void> {
+    await db
+      .update(tradeOffers)
+      .set({ status: 'rejected', respondedAt: sql`NOW()` })
+      .where(eq(tradeOffers.id, tradeId));
+  }
+
+  async purchaseAutoclickerWithCoins(userId: string, autoclickerId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      return await db.transaction(async (tx) => {
+        // Get autoclicker details
+        const [autoclicker] = await tx.select().from(autoclickers).where(eq(autoclickers.id, autoclickerId));
+        if (!autoclicker) {
+          return { success: false, message: 'Autoclicker not found' };
+        }
+
+        // Check if user already owns this autoclicker
+        const [existing] = await tx.select().from(userAutoclickers)
+          .where(and(eq(userAutoclickers.userId, userId), eq(userAutoclickers.autoclickerId, autoclickerId)));
+        
+        if (existing) {
+          // Increment quantity if already owned
+          await tx
+            .update(userAutoclickers)
+            .set({ quantity: sql`${userAutoclickers.quantity} + 1` })
+            .where(eq(userAutoclickers.id, existing.id));
+          return { success: true, message: 'Autoclicker quantity increased' };
+        }
+
+        // Deduct coins from user (with conditional check)
+        const [user] = await tx
+          .update(users)
+          .set({ coins: sql`${users.coins} - ${autoclicker.price}` })
+          .where(and(eq(users.id, userId), sql`${users.coins} >= ${autoclicker.price}`))
+          .returning();
+
+        if (!user) {
+          return { success: false, message: 'Insufficient coins' };
+        }
+
+        // Add autoclicker to user
+        await tx
+          .insert(userAutoclickers)
+          .values({ userId, autoclickerId, quantity: 1 });
+
+        return { success: true, message: 'Autoclicker purchased successfully' };
+      });
+    } catch (error) {
+      return { success: false, message: 'Purchase failed' };
+    }
+  }
+
+  async acceptTradeOfferWithTransfer(tradeId: string): Promise<{ success: boolean; message: string }> {
+    return await db.transaction(async (tx) => {
+      try {
+        // Get the trade offer and validate it exists and is pending
+        const [trade] = await tx.select().from(tradeOffers).where(eq(tradeOffers.id, tradeId));
+        if (!trade) {
+          return { success: false, message: "Trade offer not found" };
+        }
+
+        if (trade.status !== 'pending') {
+          return { success: false, message: "Trade offer is no longer pending" };
+        }
+
+        // Validate sender has enough fruits
+        const senderFruits = await tx
+          .select()
+          .from(userFruits)
+          .where(and(eq(userFruits.userId, trade.senderId), eq(userFruits.fruitId, trade.senderFruitId)));
+        
+        const [senderFruit] = senderFruits;
+        if (!senderFruit || !senderFruit.quantity || senderFruit.quantity < trade.senderQuantity) {
+          return { success: false, message: "Sender doesn't have enough fruits" };
+        }
+
+        // Validate receiver has enough fruits
+        const receiverFruits = await tx
+          .select()
+          .from(userFruits)
+          .where(and(eq(userFruits.userId, trade.receiverId), eq(userFruits.fruitId, trade.receiverFruitId)));
+        
+        const [receiverFruit] = receiverFruits;
+        if (!receiverFruit || !receiverFruit.quantity || receiverFruit.quantity < trade.receiverQuantity) {
+          return { success: false, message: "Receiver doesn't have enough fruits" };
+        }
+
+        // Deduct fruits from sender with conditional update
+        const senderUpdateResult = await tx
+          .update(userFruits)
+          .set({ quantity: sql`${userFruits.quantity} - ${trade.senderQuantity}` })
+          .where(and(
+            eq(userFruits.id, senderFruit.id),
+            sql`${userFruits.quantity} >= ${trade.senderQuantity}`
+          ))
+          .returning();
+
+        if (senderUpdateResult.length === 0) {
+          return { success: false, message: "Sender insufficient fruits (race condition)" };
+        }
+
+        // Deduct fruits from receiver with conditional update
+        const receiverUpdateResult = await tx
+          .update(userFruits)
+          .set({ quantity: sql`${userFruits.quantity} - ${trade.receiverQuantity}` })
+          .where(and(
+            eq(userFruits.id, receiverFruit.id),
+            sql`${userFruits.quantity} >= ${trade.receiverQuantity}`
+          ))
+          .returning();
+
+        if (receiverUpdateResult.length === 0) {
+          return { success: false, message: "Receiver insufficient fruits (race condition)" };
+        }
+
+        // Clean up zero quantity entries
+        await tx.delete(userFruits).where(and(eq(userFruits.quantity, 0)));
+
+        // Give receiver fruits to sender
+        const existingSenderReceiverFruit = await tx
+          .select()
+          .from(userFruits)
+          .where(and(eq(userFruits.userId, trade.senderId), eq(userFruits.fruitId, trade.receiverFruitId)));
+
+        if (existingSenderReceiverFruit.length > 0) {
+          await tx
+            .update(userFruits)
+            .set({ quantity: sql`${userFruits.quantity} + ${trade.receiverQuantity}` })
+            .where(eq(userFruits.id, existingSenderReceiverFruit[0].id));
+        } else {
+          await tx
+            .insert(userFruits)
+            .values({
+              userId: trade.senderId,
+              fruitId: trade.receiverFruitId,
+              quantity: trade.receiverQuantity
+            });
+        }
+
+        // Give sender fruits to receiver
+        const existingReceiverSenderFruit = await tx
+          .select()
+          .from(userFruits)
+          .where(and(eq(userFruits.userId, trade.receiverId), eq(userFruits.fruitId, trade.senderFruitId)));
+
+        if (existingReceiverSenderFruit.length > 0) {
+          await tx
+            .update(userFruits)
+            .set({ quantity: sql`${userFruits.quantity} + ${trade.senderQuantity}` })
+            .where(eq(userFruits.id, existingReceiverSenderFruit[0].id));
+        } else {
+          await tx
+            .insert(userFruits)
+            .values({
+              userId: trade.receiverId,
+              fruitId: trade.senderFruitId,
+              quantity: trade.senderQuantity
+            });
+        }
+
+        // Update trade status to accepted
+        await tx
+          .update(tradeOffers)
+          .set({ status: 'accepted', respondedAt: sql`NOW()` })
+          .where(eq(tradeOffers.id, tradeId));
+
+        return { success: true, message: "Trade completed successfully" };
+      } catch (error) {
+        console.error('Error in acceptTradeOfferWithTransfer:', error);
+        return { success: false, message: "Transaction failed" };
+      }
+    });
   }
 }
 
