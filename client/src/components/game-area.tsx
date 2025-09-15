@@ -22,10 +22,13 @@ export function GameArea({
   lastClickTime,
 }: GameAreaProps) {
   const now = Date.now();
-  const timeUntilNext = Math.max(0, 10 - (now - lastClickTime));
+  const timeUntilNext = Math.max(0, cooldownMs - (now - lastClickTime));
   const isReady = timeUntilNext === 0;
 
   const handleClick = (e: React.MouseEvent) => {
+    // Only spawn fruit if cooldown is ready
+    if (!isReady) return;
+    
     const rect = e.currentTarget.getBoundingClientRect();
     // Generate random position within the game area
     const x = Math.random() * rect.width;
@@ -58,7 +61,7 @@ export function GameArea({
             <span
               className={`font-bold ml-1 ${isReady ? "text-primary" : "text-muted-foreground"}`}
             >
-              {isReady ? "Ready!" : `${(timeUntilNext / 100000).toFixed(1)}s`}
+              {isReady ? "Ready!" : `${(timeUntilNext / 1000).toFixed(1)}s`}
             </span>
           </p>
         </div>
