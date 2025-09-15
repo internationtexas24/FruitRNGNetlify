@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useOfflineMode } from "@/hooks/use-offline-mode";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { UserFruit } from "@shared/schema";
@@ -7,11 +8,30 @@ import { GameArea } from "@/components/game-area";
 import { InventoryModal } from "@/components/inventory-modal";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { generateRandomFruit } from "@/lib/fruit-data";
 import { fruitDatabase } from "@/lib/fruit-data";
+import { offlineStorage } from "@/lib/offline-storage";
+import { Wifi, WifiOff, Coins, Zap, Play, Pause, RotateCcw } from "lucide-react";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
+  const { 
+    isOfflineMode, 
+    setOfflineMode, 
+    offlineUser, 
+    offlineFruits, 
+    offlineAutoclickers,
+    addOfflineFruit,
+    purchaseOfflineAutoclicker,
+    resetOfflineGame,
+    autoClickerActive,
+    setAutoClickerActive
+  } = useOfflineMode();
+  
   const { toast } = useToast();
   const [showInventory, setShowInventory] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
@@ -27,9 +47,11 @@ export default function HomePage() {
 
   const cooldownMs = 200;
 
+  // Online mode queries
   const { data: userFruits = [] } = useQuery<UserFruit[]>({
     queryKey: ["/api/fruits"],
     queryFn: getQueryFn({ on401: "throw" }),
+    enabled: !isOfflineMode && !!user, // Only fetch when online and authenticated
   });
 
   const addFruitMutation = useMutation({
@@ -50,6 +72,10 @@ export default function HomePage() {
     },
   });
 
+  // Get current user data based on mode
+  const currentUser = isOfflineMode ? offlineUser : user;
+  const currentFruits = isOfflineMode ? offlineFruits : userFruits;
+
   const handleFruitSpawn = (x: number, y: number) => {
     const now = Date.now();
     if (now - lastClickTime < cooldownMs) {
@@ -68,7 +94,17 @@ export default function HomePage() {
     };
 
     setSpawnedFruits((prev) => [...prev, spawnedFruit]);
-    addFruitMutation.mutate(fruit.id);
+
+    // Handle fruit collection based on mode
+    if (isOfflineMode) {
+      addOfflineFruit(fruit.id);
+      toast({
+        title: "Fruit collected!",
+        description: `You found a ${fruit.name}! (+10 coins)`,
+      });
+    } else {
+      addFruitMutation.mutate(fruit.id);
+    }
 
     // Remove spawned fruit after animation
     setTimeout(() => {
@@ -88,15 +124,15 @@ export default function HomePage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [lastClickTime]);
+  }, [lastClickTime, isOfflineMode]);
 
-  const totalFruits = userFruits.reduce(
+  const totalFruits = currentFruits.reduce(
     (sum, fruit) => sum + (fruit.quantity || 0),
     0,
   );
-  const rareCount = userFruits
-    .filter((fruit: UserFruit) => {
-      // Count rare, epic, and legendary fruits
+  
+  const rareCount = currentFruits
+    .filter((fruit: any) => {
       const fruitData = fruitDatabase.find((f: any) => f.id === fruit.fruitId);
       return (
         fruitData && ["rare", "epic", "legendary"].includes(fruitData.rarity)
@@ -104,8 +140,147 @@ export default function HomePage() {
     })
     .reduce((sum, fruit) => sum + (fruit.quantity || 0), 0);
 
+  const handleModeToggle = (offline: boolean) => {
+    setOfflineMode(offline);
+    if (offline) {
+      toast({
+        title: "Offline Mode Enabled",
+        description: "You can now play without an internet connection!",
+      });
+    } else {
+      toast({
+        title: "Online Mode Enabled", 
+        description: "Connected to online features and marketplace!",
+      });
+    }
+  };
+
+  const handleAutoclickerPurchase = (autoclickerId: string) => {
+    if (isOfflineMode) {
+      const result = purchaseOfflineAutoclicker(autoclickerId);
+      toast({
+        title: result.success ? "Purchase Successful!" : "Purchase Failed",
+        description: result.message,
+        variant: result.success ? "default" : "destructive",
+      });
+    } else {
+      toast({
+        title: "Coming Soon",
+        description: "Autoclicker shop will be available in online mode soon!",
+      });
+    }
+  };
+
+  const availableAutoclickers = offlineStorage.getAvailableAutoclickers();
+
   return (
     <div className="min-h-screen bg-background text-foreground overflow-hidden relative">
+      {/* Mode Toggle Header */}
+      <div className="fixed top-4 left-4 right-4 z-50 flex justify-between items-center">
+        <Card className="p-4">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              {isOfflineMode ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
+              <span className="text-sm font-medium">
+                {isOfflineMode ? "Offline Mode" : "Online Mode"}
+              </span>
+            </div>
+            <Switch
+              checked={isOfflineMode}
+              onCheckedChange={handleModeToggle}
+              data-testid="toggle-offline-mode"
+            />
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Coins className="h-4 w-4 text-yellow-500" />
+              <span className="text-sm font-medium">
+                {currentUser?.coins || 0} coins
+              </span>
+            </div>
+            <Separator orientation="vertical" className="h-4" />
+            <span className="text-sm text-muted-foreground">
+              {currentUser?.username || "Player"}
+            </span>
+          </div>
+        </Card>
+
+        {!isOfflineMode && (
+          <Button
+            onClick={() => logoutMutation.mutate()}
+            variant="outline"
+            size="sm"
+            data-testid="button-logout"
+          >
+            Logout
+          </Button>
+        )}
+      </div>
+
+      {/* Offline Controls */}
+      {isOfflineMode && (
+        <div className="fixed top-20 right-4 z-50 space-y-2">
+          <Card className="p-4">
+            <div className="flex items-center space-x-2">
+              <Button
+                onClick={() => setAutoClickerActive(!autoClickerActive)}
+                variant={autoClickerActive ? "default" : "outline"}
+                size="sm"
+                data-testid="toggle-autoclicker"
+              >
+                {autoClickerActive ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                Auto-Clicker
+              </Button>
+              <Button
+                onClick={resetOfflineGame}
+                variant="outline"
+                size="sm"
+                data-testid="button-reset-game"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reset
+              </Button>
+            </div>
+          </Card>
+
+          {/* Auto-clicker Shop */}
+          <Card className="p-4 max-w-xs">
+            <CardHeader className="p-0 mb-2">
+              <CardTitle className="text-sm">Auto-Clicker Shop</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 space-y-2">
+              {availableAutoclickers.map((auto) => {
+                const owned = offlineAutoclickers.find(ua => ua.autoclickerId === auto.id);
+                const canAfford = (currentUser?.coins || 0) >= auto.price;
+                
+                return (
+                  <div key={auto.id} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center space-x-1">
+                      <span>{auto.emoji}</span>
+                      <span className="font-medium">{auto.name}</span>
+                      {owned && <Badge variant="secondary">{owned.quantity}</Badge>}
+                    </div>
+                    <Button
+                      onClick={() => handleAutoclickerPurchase(auto.id)}
+                      disabled={!canAfford}
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2"
+                      data-testid={`button-buy-autoclicker-${auto.id}`}
+                    >
+                      {auto.price}💰
+                    </Button>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Animated Background Fruits */}
       <div className="fixed inset-0 z-0">
         <div
@@ -124,126 +299,51 @@ export default function HomePage() {
           className="fruit-bg"
           style={{ top: "60%", left: "15%", animationDelay: "1s" }}
         >
-          🍊
-        </div>
-        <div
-          className="fruit-bg"
-          style={{ top: "80%", left: "70%", animationDelay: "1.5s" }}
-        >
           🍇
         </div>
         <div
           className="fruit-bg"
-          style={{ top: "30%", left: "90%", animationDelay: "2s" }}
+          style={{ top: "70%", left: "70%", animationDelay: "1.5s" }}
+        >
+          🍊
+        </div>
+        <div
+          className="fruit-bg"
+          style={{ top: "40%", left: "90%", animationDelay: "2s" }}
         >
           🍓
         </div>
-        <div
-          className="fruit-bg"
-          style={{ top: "50%", left: "5%", animationDelay: "2.5s" }}
-        >
-          🥝
-        </div>
-        <div
-          className="fruit-bg"
-          style={{ top: "70%", left: "85%", animationDelay: "3s" }}
-        >
-          🍑
-        </div>
-        <div
-          className="fruit-bg"
-          style={{ top: "15%", left: "60%", animationDelay: "3.5s" }}
-        >
-          🍍
-        </div>
-        <div
-          className="fruit-bg"
-          style={{ top: "90%", left: "30%", animationDelay: "4s" }}
-        >
-          🥭
-        </div>
-        <div
-          className="fruit-bg"
-          style={{ top: "40%", left: "45%", animationDelay: "4.5s" }}
-        >
-          🍈
-        </div>
       </div>
 
-      {/* Top Navigation */}
-      <nav className="game-ui absolute top-0 left-0 right-0 z-50 p-4">
-        <div className="glassmorphism rounded-xl p-4 flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <h1 className="text-2xl font-bold text-primary flex items-center">
-              <span className="text-3xl mr-2">🍎</span>
-              Fruit RNG
-            </h1>
-            <div className="text-sm text-muted-foreground">
-              {user?.username || "Guest"}
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-6 text-sm">
-              <div className="flex items-center space-x-2">
-                <i className="fas fa-coins text-legendary"></i>
-                <span data-testid="total-fruits">{totalFruits}</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <i className="fas fa-star text-epic"></i>
-                <span data-testid="rare-count">{rareCount}</span>
-              </div>
-            </div>
-
-            <Button
-              onClick={() => setShowInventory(true)}
-              className="bg-secondary text-secondary-foreground hover:bg-secondary/80"
-              data-testid="button-inventory"
-            >
-              <i className="fas fa-backpack mr-2"></i>
-              Inventory
-            </Button>
-            <Button
-              onClick={() => logoutMutation.mutate()}
-              variant="destructive"
-              data-testid="button-logout"
-            >
-              <i className="fas fa-sign-out-alt mr-2"></i>
-              Logout
-            </Button>
-          </div>
-        </div>
-      </nav>
-
-      {/* Game Area */}
-      <GameArea
-        onFruitSpawn={handleFruitSpawn}
-        spawnedFruits={spawnedFruits}
-        cooldownMs={cooldownMs}
-        lastClickTime={lastClickTime}
-      />
-
-      {/* Mobile Click Button */}
-      <Button
-        onClick={(e) => {
-          e.stopPropagation();
-          const rect = e.currentTarget.getBoundingClientRect();
-          const x = rect.left + rect.width / 2;
-          const y = rect.top + rect.height / 2;
-          handleFruitSpawn(x, y);
-        }}
-        className="game-ui fixed bottom-6 right-6 w-16 h-16 bg-primary rounded-full shadow-xl text-2xl hover:bg-primary/80 transform hover:scale-110 animate-pulse-glow z-40 lg:hidden"
-        data-testid="button-mobile-click"
-      >
-        🍎
-      </Button>
+      {/* Main Game Area */}
+      <div className="relative z-10">
+        <GameArea
+          onFruitSpawn={handleFruitSpawn}
+          spawnedFruits={spawnedFruits}
+          totalFruits={totalFruits}
+          rareCount={rareCount}
+          onOpenInventory={() => setShowInventory(true)}
+          isOfflineMode={isOfflineMode}
+        />
+      </div>
 
       {/* Inventory Modal */}
       <InventoryModal
-        isOpen={showInventory}
-        onClose={() => setShowInventory(false)}
-        userFruits={userFruits}
+        open={showInventory}
+        onOpenChange={setShowInventory}
+        fruits={currentFruits}
+        isOfflineMode={isOfflineMode}
       />
+
+      {/* Game Instructions */}
+      <div className="fixed bottom-4 left-4 z-50">
+        <Card className="p-4 max-w-xs">
+          <p className="text-sm text-muted-foreground">
+            Click anywhere or press <kbd className="px-1 bg-muted rounded">Space</kbd> to collect fruits!
+            {isOfflineMode && " Use auto-clickers to collect automatically!"}
+          </p>
+        </Card>
+      </div>
     </div>
   );
 }

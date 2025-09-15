@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { Redirect } from 'wouter';
+import { useOfflineMode } from '@/hooks/use-offline-mode';
+import { Redirect, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +20,8 @@ const registerSchema = insertUserSchema.extend({
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
+  const { isOfflineMode, setOfflineMode } = useOfflineMode();
+  const [, setLocation] = useLocation();
   const [isLogin, setIsLogin] = useState(true);
 
   const loginForm = useForm({
@@ -48,10 +51,15 @@ export default function AuthPage() {
     registerMutation.mutate(registerData);
   };
 
-  // Redirect if already logged in (after hooks are called)
-  if (user) {
+  // Redirect if already logged in or in offline mode
+  if (user || isOfflineMode) {
     return <Redirect to="/" />;
   }
+
+  const handlePlayOffline = () => {
+    setOfflineMode(true);
+    setLocation('/');
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
@@ -197,7 +205,7 @@ export default function AuthPage() {
               </form>
             )}
             
-            <div className="mt-6 text-center">
+            <div className="mt-6 text-center space-y-4">
               <p className="text-sm text-muted-foreground">
                 {isLogin ? "Don't have an account? " : "Already have an account? "}
                 <button 
@@ -207,6 +215,28 @@ export default function AuthPage() {
                 >
                   {isLogin ? 'Sign up' : 'Sign in'}
                 </button>
+              </p>
+              
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">or</span>
+                </div>
+              </div>
+              
+              <Button 
+                variant="outline" 
+                onClick={handlePlayOffline}
+                className="w-full"
+                data-testid="button-play-offline"
+              >
+                🎮 Play Offline (No Account Required)
+              </Button>
+              
+              <p className="text-xs text-muted-foreground">
+                Try the game without signing up! Your progress will be saved locally.
               </p>
             </div>
           </CardContent>

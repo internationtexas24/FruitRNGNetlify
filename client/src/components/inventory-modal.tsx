@@ -6,18 +6,34 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
 interface InventoryModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  userFruits: UserFruit[];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  fruits?: UserFruit[] | any[];
+  userFruits?: UserFruit[];
+  isOfflineMode?: boolean;
 }
 
 type RarityFilter = 'all' | 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
 
-export function InventoryModal({ isOpen, onClose, userFruits }: InventoryModalProps) {
+export function InventoryModal({ 
+  open, 
+  onOpenChange, 
+  isOpen, 
+  onClose, 
+  fruits, 
+  userFruits, 
+  isOfflineMode = false 
+}: InventoryModalProps) {
+  // Handle both prop patterns
+  const modalOpen = open ?? isOpen ?? false;
+  const handleOpenChange = onOpenChange ?? ((open: boolean) => !open && onClose?.());
+  const currentFruits = fruits ?? userFruits ?? [];
   const [selectedRarity, setSelectedRarity] = useState<RarityFilter>('all');
 
   // Create a map of user fruits for quick lookup
-  const userFruitMap = new Map(userFruits.map(fruit => [fruit.fruitId, fruit.quantity]));
+  const userFruitMap = new Map((currentFruits || []).map(fruit => [fruit.fruitId, fruit.quantity || 1]));
 
   // Filter fruits based on selected rarity and whether user has them
   const filteredFruits = fruitDatabase.filter(fruit => {
@@ -29,23 +45,23 @@ export function InventoryModal({ isOpen, onClose, userFruits }: InventoryModalPr
 
   // Calculate stats by rarity
   const statsByRarity = {
-    common: userFruits.filter(userFruit => {
+    common: currentFruits.filter(userFruit => {
       const fruit = fruitDatabase.find(f => f.id === userFruit.fruitId);
       return fruit?.rarity === 'common';
     }).reduce((sum, fruit) => sum + (fruit.quantity || 0), 0),
-    uncommon: userFruits.filter(userFruit => {
+    uncommon: currentFruits.filter(userFruit => {
       const fruit = fruitDatabase.find(f => f.id === userFruit.fruitId);
       return fruit?.rarity === 'uncommon';
     }).reduce((sum, fruit) => sum + (fruit.quantity || 0), 0),
-    rare: userFruits.filter(userFruit => {
+    rare: currentFruits.filter(userFruit => {
       const fruit = fruitDatabase.find(f => f.id === userFruit.fruitId);
       return fruit?.rarity === 'rare';
     }).reduce((sum, fruit) => sum + (fruit.quantity || 0), 0),
-    epic: userFruits.filter(userFruit => {
+    epic: currentFruits.filter(userFruit => {
       const fruit = fruitDatabase.find(f => f.id === userFruit.fruitId);
       return fruit?.rarity === 'epic';
     }).reduce((sum, fruit) => sum + (fruit.quantity || 0), 0),
-    legendary: userFruits.filter(userFruit => {
+    legendary: currentFruits.filter(userFruit => {
       const fruit = fruitDatabase.find(f => f.id === userFruit.fruitId);
       return fruit?.rarity === 'legendary';
     }).reduce((sum, fruit) => sum + (fruit.quantity || 0), 0),
@@ -54,7 +70,7 @@ export function InventoryModal({ isOpen, onClose, userFruits }: InventoryModalPr
   const totalFruits = Object.values(statsByRarity).reduce((sum, count) => sum + count, 0);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={modalOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden glassmorphism border-border" data-testid="modal-inventory">
         <DialogHeader className="border-b border-border pb-4">
           <DialogTitle className="text-2xl font-bold flex items-center">

@@ -11,15 +11,23 @@ interface SpawnedFruit {
 interface GameAreaProps {
   onFruitSpawn: (x: number, y: number) => void;
   spawnedFruits: SpawnedFruit[];
-  cooldownMs: number;
-  lastClickTime: number;
+  cooldownMs?: number;
+  lastClickTime?: number;
+  totalFruits?: number;
+  rareCount?: number;
+  onOpenInventory?: () => void;
+  isOfflineMode?: boolean;
 }
 
 export function GameArea({
   onFruitSpawn,
   spawnedFruits,
-  cooldownMs,
-  lastClickTime,
+  cooldownMs = 200,
+  lastClickTime = 0,
+  totalFruits = 0,
+  rareCount = 0,
+  onOpenInventory,
+  isOfflineMode = false,
 }: GameAreaProps) {
   const now = Date.now();
   const timeUntilNext = Math.max(0, cooldownMs - (now - lastClickTime));
