@@ -436,6 +436,17 @@ export class DatabaseStorage implements IStorage {
           return { success: false, message: 'Autoclicker not found' };
         }
 
+        // Always deduct coins first (with conditional check)
+        const [user] = await tx
+          .update(users)
+          .set({ coins: sql`${users.coins} - ${autoclicker.price}` })
+          .where(and(eq(users.id, userId), sql`${users.coins} >= ${autoclicker.price}`))
+          .returning();
+
+        if (!user) {
+          return { success: false, message: 'Insufficient coins' };
+        }
+
         // Check if user already owns this autoclicker
         const [existing] = await tx.select().from(userAutoclickers)
           .where(and(eq(userAutoclickers.userId, userId), eq(userAutoclickers.autoclickerId, autoclickerId)));
@@ -447,17 +458,6 @@ export class DatabaseStorage implements IStorage {
             .set({ quantity: sql`${userAutoclickers.quantity} + 1` })
             .where(eq(userAutoclickers.id, existing.id));
           return { success: true, message: 'Autoclicker quantity increased' };
-        }
-
-        // Deduct coins from user (with conditional check)
-        const [user] = await tx
-          .update(users)
-          .set({ coins: sql`${users.coins} - ${autoclicker.price}` })
-          .where(and(eq(users.id, userId), sql`${users.coins} >= ${autoclicker.price}`))
-          .returning();
-
-        if (!user) {
-          return { success: false, message: 'Insufficient coins' };
         }
 
         // Add autoclicker to user

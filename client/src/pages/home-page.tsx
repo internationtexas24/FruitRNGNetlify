@@ -112,6 +112,15 @@ export default function HomePage() {
   const currentUser = isOfflineMode ? offlineUser : user;
   const currentFruits = isOfflineMode ? offlineFruits : userFruits;
 
+  // Get autoclickers data based on mode
+  const availableAutoclickers = isOfflineMode 
+    ? offlineStorage.getAvailableAutoclickers() 
+    : onlineAutoclickers;
+  
+  const currentUserAutoclickers = isOfflineMode 
+    ? offlineAutoclickers 
+    : userAutoclickers;
+
   const handleFruitSpawn = (x: number, y: number) => {
     const now = Date.now();
     if (now - lastClickTime < cooldownMs) {
@@ -162,6 +171,41 @@ export default function HomePage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [lastClickTime, isOfflineMode]);
 
+  // Autoclicker effect - runs all autoclickers automatically
+  useEffect(() => {
+    if (!autoClickerActive) return;
+
+    const intervals: NodeJS.Timeout[] = [];
+    
+    // Get current user autoclickers based on mode
+    const userAutoclickers = isOfflineMode ? offlineAutoclickers : currentUserAutoclickers;
+    const autoclickers = isOfflineMode ? offlineStorage.getAvailableAutoclickers() : availableAutoclickers;
+    
+    // Create interval for each owned autoclicker
+    userAutoclickers.forEach((userAuto: any) => {
+      const autoData = autoclickers.find((auto: any) => auto.id === userAuto.autoclickerId);
+      if (!autoData || !userAuto.quantity) return;
+
+      // Create timers for each quantity of this autoclicker type
+      for (let i = 0; i < userAuto.quantity; i++) {
+        const interval = setInterval(() => {
+          // Generate random spawn position
+          const x = Math.random() * (window.innerWidth - 200) + 100;
+          const y = Math.random() * (window.innerHeight - 200) + 100;
+          
+          handleFruitSpawn(x, y);
+        }, autoData.clickInterval);
+        
+        intervals.push(interval);
+      }
+    });
+
+    // Cleanup all intervals when effect changes
+    return () => {
+      intervals.forEach(clearInterval);
+    };
+  }, [isOfflineMode, autoClickerActive, offlineAutoclickers, currentUserAutoclickers, availableAutoclickers]);
+
   const totalFruits = currentFruits.reduce(
     (sum, fruit) => sum + (fruit.quantity || 0),
     0,
@@ -204,15 +248,6 @@ export default function HomePage() {
       purchaseAutoclickerMutation.mutate(autoclickerId);
     }
   };
-
-  // Get autoclickers data based on mode
-  const availableAutoclickers = isOfflineMode 
-    ? offlineStorage.getAvailableAutoclickers() 
-    : onlineAutoclickers;
-  
-  const currentUserAutoclickers = isOfflineMode 
-    ? offlineAutoclickers 
-    : userAutoclickers;
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-hidden relative">
