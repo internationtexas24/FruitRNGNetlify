@@ -164,39 +164,97 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createMarketplaceListing(listing: InsertMarketplaceListing): Promise<MarketplaceListing> {
-    const [created] = await db
-      .insert(marketplaceListings)
-      .values(listing)
-      .returning();
-    return created;
+    return await db.transaction(async (tx) => {
+      // Atomically verify and reserve fruit using conditional decrement - prevents overselling races
+      const sellerFruitResult = await tx
+        .update(userFruits)
+        .set({ quantity: sql`${userFruits.quantity} - ${listing.quantity}` })
+        .where(and(
+          eq(userFruits.userId, listing.sellerId), 
+          eq(userFruits.fruitId, listing.fruitId),
+          sql`${userFruits.quantity} >= ${listing.quantity}`
+        ))
+        .returning();
+
+      if (sellerFruitResult.length === 0) {
+        throw new Error("Insufficient fruit to create listing");
+      }
+
+      // If quantity becomes 0, remove the fruit entry
+      const updatedFruit = sellerFruitResult[0];
+      if (updatedFruit.quantity === 0) {
+        await tx
+          .delete(userFruits)
+          .where(eq(userFruits.id, updatedFruit.id));
+      }
+
+      // Create the marketplace listing
+      const [created] = await tx
+        .insert(marketplaceListings)
+        .values(listing)
+        .returning();
+      
+      return created;
+    });
   }
 
   async deleteMarketplaceListing(listingId: string): Promise<void> {
-    await db.delete(marketplaceListings).where(eq(marketplaceListings.id, listingId));
+    await db.transaction(async (tx) => {
+      // Atomically delete the listing and get its data - prevents race with concurrent purchases
+      const [listing] = await tx
+        .delete(marketplaceListings)
+        .where(eq(marketplaceListings.id, listingId))
+        .returning();
+        
+      if (!listing) {
+        return; // Listing doesn't exist or was already deleted, nothing to do
+      }
+
+      // Restore fruit back to seller using the atomically retrieved listing data
+      const existingFruit = await tx
+        .select()
+        .from(userFruits)
+        .where(and(eq(userFruits.userId, listing.sellerId), eq(userFruits.fruitId, listing.fruitId)));
+
+      if (existingFruit.length > 0) {
+        // Update existing fruit quantity
+        await tx
+          .update(userFruits)
+          .set({ quantity: sql`${userFruits.quantity} + ${listing.quantity}` })
+          .where(eq(userFruits.id, existingFruit[0].id));
+      } else {
+        // Create new fruit entry for seller
+        await tx
+          .insert(userFruits)
+          .values({
+            userId: listing.sellerId,
+            fruitId: listing.fruitId,
+            quantity: listing.quantity
+          });
+      }
+    });
   }
 
   async buyMarketplaceListing(buyerId: string, listingId: string): Promise<{ success: boolean; message: string }> {
     return await db.transaction(async (tx) => {
       try {
-        // Get the listing and validate it exists
-        const [listing] = await tx.select().from(marketplaceListings).where(eq(marketplaceListings.id, listingId));
+        // Atomically claim the listing by deleting it first - this prevents race conditions
+        const [listing] = await tx
+          .delete(marketplaceListings)
+          .where(eq(marketplaceListings.id, listingId))
+          .returning();
+          
         if (!listing) {
-          return { success: false, message: "Listing not found" };
+          throw new Error("Listing not found or already sold");
         }
 
         // Prevent users from buying their own listings
         if (listing.sellerId === buyerId) {
-          return { success: false, message: "Cannot buy your own listing" };
+          throw new Error("Cannot buy your own listing");
         }
 
         // Calculate total cost
         const totalCost = listing.pricePerUnit * listing.quantity;
-
-        // Get buyer's current coins and validate sufficient funds
-        const [buyer] = await tx.select().from(users).where(eq(users.id, buyerId));
-        if (!buyer || !buyer.coins || buyer.coins < totalCost) {
-          return { success: false, message: "Insufficient coins" };
-        }
 
         // Deduct coins from buyer with conditional update to prevent race conditions
         const buyerUpdateResult = await tx
@@ -206,7 +264,7 @@ export class DatabaseStorage implements IStorage {
           .returning();
 
         if (buyerUpdateResult.length === 0) {
-          return { success: false, message: "Insufficient coins (race condition)" };
+          throw new Error("Insufficient coins");
         }
 
         // Add coins to seller
@@ -215,7 +273,7 @@ export class DatabaseStorage implements IStorage {
           .set({ coins: sql`${users.coins} + ${totalCost}` })
           .where(eq(users.id, listing.sellerId));
 
-        // Transfer fruit to buyer
+        // Transfer fruit to buyer (no need to check seller inventory since listing creation already reserved it)
         const existingBuyerFruit = await tx
           .select()
           .from(userFruits)
@@ -238,13 +296,12 @@ export class DatabaseStorage implements IStorage {
             });
         }
 
-        // Remove the listing
-        await tx.delete(marketplaceListings).where(eq(marketplaceListings.id, listingId));
-
         return { success: true, message: "Purchase completed successfully" };
       } catch (error) {
         console.error('Error in buyMarketplaceListing:', error);
-        return { success: false, message: "Transaction failed" };
+        // Use error message from thrown errors for better feedback
+        const errorMessage = error instanceof Error ? error.message : "Transaction failed";
+        throw new Error(errorMessage); // Ensure transaction is rolled back
       }
     });
   }
