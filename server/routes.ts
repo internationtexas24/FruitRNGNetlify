@@ -123,6 +123,19 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.get("/api/user-autoclickers", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const userAutoclickers = await storage.getUserAutoclickers(req.user!.id);
+      res.json(userAutoclickers);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch user autoclickers" });
+    }
+  });
+
   app.post("/api/autoclickers", async (req, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });

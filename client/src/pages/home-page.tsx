@@ -56,6 +56,18 @@ export default function HomePage() {
     enabled: !isOfflineMode && !!user, // Only fetch when online and authenticated
   });
 
+  const { data: onlineAutoclickers = [] } = useQuery<any[]>({
+    queryKey: ["/api/autoclickers"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled: !!user, // Fetch for both online and offline users
+  });
+
+  const { data: userAutoclickers = [] } = useQuery<any[]>({
+    queryKey: ["/api/user-autoclickers"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled: !isOfflineMode && !!user, // Only fetch when online and authenticated
+  });
+
   const addFruitMutation = useMutation({
     mutationFn: async (fruitId: string) => {
       const res = await apiRequest("POST", "/api/fruits", { fruitId });
@@ -68,6 +80,28 @@ export default function HomePage() {
     onError: (error: Error) => {
       toast({
         title: "Failed to collect fruit",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const purchaseAutoclickerMutation = useMutation({
+    mutationFn: async (autoclickerId: string) => {
+      const res = await apiRequest("POST", "/api/autoclickers", { autoclickerId });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-autoclickers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      toast({
+        title: "Purchase Successful!",
+        description: "Autoclicker purchased successfully!",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Purchase Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -166,14 +200,19 @@ export default function HomePage() {
         variant: result.success ? "default" : "destructive",
       });
     } else {
-      toast({
-        title: "Coming Soon",
-        description: "Autoclicker shop will be available in online mode soon!",
-      });
+      // Online mode - use the mutation
+      purchaseAutoclickerMutation.mutate(autoclickerId);
     }
   };
 
-  const availableAutoclickers = offlineStorage.getAvailableAutoclickers();
+  // Get autoclickers data based on mode
+  const availableAutoclickers = isOfflineMode 
+    ? offlineStorage.getAvailableAutoclickers() 
+    : onlineAutoclickers;
+  
+  const currentUserAutoclickers = isOfflineMode 
+    ? offlineAutoclickers 
+    : userAutoclickers;
 
   return (
     <div className="min-h-screen bg-background text-foreground overflow-hidden relative">
@@ -244,9 +283,9 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Offline Controls */}
-      {isOfflineMode && (
-        <div className="fixed top-20 right-4 z-50 space-y-2">
+      {/* Game Controls */}
+      <div className="fixed top-20 right-4 z-50 space-y-2">
+        {isOfflineMode && (
           <Card className="p-4">
             <div className="flex items-center space-x-2">
               <Button
@@ -269,41 +308,41 @@ export default function HomePage() {
               </Button>
             </div>
           </Card>
+        )}
 
-          {/* Auto-clicker Shop */}
-          <Card className="p-4 max-w-xs">
-            <CardHeader className="p-0 mb-2">
-              <CardTitle className="text-sm">Auto-Clicker Shop</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 space-y-2">
-              {availableAutoclickers.map((auto) => {
-                const owned = offlineAutoclickers.find(ua => ua.autoclickerId === auto.id);
-                const canAfford = (currentUser?.coins || 0) >= auto.price;
-                
-                return (
-                  <div key={auto.id} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center space-x-1">
-                      <span>{auto.emoji}</span>
-                      <span className="font-medium">{auto.name}</span>
-                      {owned && <Badge variant="secondary">{owned.quantity}</Badge>}
-                    </div>
-                    <Button
-                      onClick={() => handleAutoclickerPurchase(auto.id)}
-                      disabled={!canAfford}
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2"
-                      data-testid={`button-buy-autoclicker-${auto.id}`}
-                    >
-                      {auto.price}💰
-                    </Button>
+        {/* Auto-clicker Shop - Now available for both modes */}
+        <Card className="p-4 max-w-xs">
+          <CardHeader className="p-0 mb-2">
+            <CardTitle className="text-sm">Auto-Clicker Shop</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 space-y-2">
+            {availableAutoclickers.map((auto) => {
+              const owned = currentUserAutoclickers.find(ua => ua.autoclickerId === auto.id);
+              const canAfford = (currentUser?.coins || 0) >= auto.price;
+              
+              return (
+                <div key={auto.id} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-1">
+                    <span>{auto.emoji}</span>
+                    <span className="font-medium">{auto.name}</span>
+                    {owned && <Badge variant="secondary">{owned.quantity}</Badge>}
                   </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+                  <Button
+                    onClick={() => handleAutoclickerPurchase(auto.id)}
+                    disabled={!canAfford}
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-2"
+                    data-testid={`button-buy-autoclicker-${auto.id}`}
+                  >
+                    {auto.price}💰
+                  </Button>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Animated Background Fruits */}
       <div className="fixed inset-0 z-0">
