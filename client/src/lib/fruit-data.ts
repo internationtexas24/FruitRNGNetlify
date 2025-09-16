@@ -142,3 +142,19 @@ export const generateRandomFruit = (): Fruit => {
   }
   return fruitDatabase[0]; // Fallback
 };
+
+// Get sell price for a fruit based on its rarity
+export const getFruitSellPrice = (fruitId: string): number => {
+  const fruit = fruitDatabase.find(f => f.id === fruitId);
+  if (!fruit) return 1;
+  
+  // Price based on rarity (inversely related to chance)
+  switch (fruit.rarity) {
+    case 'common': return 5;
+    case 'uncommon': return 15;
+    case 'rare': return 50;
+    case 'epic': return 200;
+    case 'legendary': return 1000;
+    default: return 1;
+  }
+};

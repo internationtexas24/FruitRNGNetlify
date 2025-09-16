@@ -6,6 +6,7 @@ import {
   type UserAutoclicker, type InsertUserAutoclicker,
   type TradeOffer, type InsertTradeOffer
 } from "@shared/schema";
+import { getFruitSellPrice, getFruitRarity } from "@shared/fruit-utils";
 import { db } from "./db";
 import { eq, sql, and } from "drizzle-orm";
 import session from "express-session";
@@ -29,6 +30,7 @@ export interface IStorage {
   incrementUserFruit(userId: string, fruitId: string): Promise<UserFruit>;
   decrementUserFruit(userId: string, fruitId: string, amount: number): Promise<boolean>;
   incrementTotalFruits(userId: string): Promise<void>;
+  sellFruitForCoins(userId: string, fruitId: string, quantity: number): Promise<{ success: boolean; message: string; coinsEarned?: number }>;
   
   // Marketplace operations
   getMarketplaceListings(): Promise<MarketplaceListing[]>;
@@ -121,6 +123,60 @@ export class DatabaseStorage implements IStorage {
       .update(users)
       .set({ totalFruits: sql`${users.totalFruits} + 1` })
       .where(eq(users.id, userId));
+  }
+
+  async sellFruitForCoins(userId: string, fruitId: string, quantity: number): Promise<{ success: boolean; message: string; coinsEarned?: number }> {
+    if (quantity <= 0) {
+      return { success: false, message: 'Quantity must be greater than 0' };
+    }
+
+    return await db.transaction(async (tx) => {
+      try {
+        // Get fruit rarity to calculate price
+        const rarity = getFruitRarity(fruitId);
+        const pricePerFruit = getFruitSellPrice(rarity);
+        const totalCoins = pricePerFruit * quantity;
+
+        // Atomically decrement user's fruit with conditional check
+        const fruitResult = await tx
+          .update(userFruits)
+          .set({ quantity: sql`${userFruits.quantity} - ${quantity}` })
+          .where(and(
+            eq(userFruits.userId, userId),
+            eq(userFruits.fruitId, fruitId),
+            sql`${userFruits.quantity} >= ${quantity}`
+          ))
+          .returning();
+
+        if (fruitResult.length === 0) {
+          throw new Error('Insufficient fruit quantity');
+        }
+
+        // If quantity becomes 0, remove the fruit entry
+        const updatedFruit = fruitResult[0];
+        if (updatedFruit.quantity === 0) {
+          await tx
+            .delete(userFruits)
+            .where(eq(userFruits.id, updatedFruit.id));
+        }
+
+        // Add coins to user
+        await tx
+          .update(users)
+          .set({ coins: sql`${users.coins} + ${totalCoins}` })
+          .where(eq(users.id, userId));
+
+        return { 
+          success: true, 
+          message: `Sold ${quantity} ${fruitId} for ${totalCoins} coins`,
+          coinsEarned: totalCoins 
+        };
+      } catch (error) {
+        console.error('Error in sellFruitForCoins:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Sell failed';
+        throw new Error(errorMessage);
+      }
+    });
   }
 
   async updateUserCoins(userId: string, amount: number): Promise<void> {
