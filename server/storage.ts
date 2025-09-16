@@ -419,14 +419,15 @@ export class DatabaseStorage implements IStorage {
   async acceptTradeOfferWithTransfer(tradeId: string): Promise<{ success: boolean; message: string }> {
     return await db.transaction(async (tx) => {
       try {
-        // Get the trade offer and validate it exists and is pending
-        const [trade] = await tx.select().from(tradeOffers).where(eq(tradeOffers.id, tradeId));
+        // Atomically claim the trade by updating status - prevents race conditions
+        const [trade] = await tx
+          .update(tradeOffers)
+          .set({ status: 'accepted', respondedAt: sql`NOW()` })
+          .where(and(eq(tradeOffers.id, tradeId), eq(tradeOffers.status, 'pending')))
+          .returning();
+          
         if (!trade) {
-          return { success: false, message: "Trade offer not found" };
-        }
-
-        if (trade.status !== 'pending') {
-          return { success: false, message: "Trade offer is no longer pending" };
+          throw new Error("Trade offer not found or already processed");
         }
 
         // Validate sender has enough fruits

@@ -15,7 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { generateRandomFruit } from "@/lib/fruit-data";
 import { fruitDatabase } from "@/lib/fruit-data";
 import { offlineStorage } from "@/lib/offline-storage";
-import { Wifi, WifiOff, Coins, Zap, Play, Pause, RotateCcw } from "lucide-react";
+import { Wifi, WifiOff, Coins, Zap, Play, Pause, RotateCcw, Package2 } from "lucide-react";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
@@ -201,6 +201,17 @@ export default function HomePage() {
                 {currentUser?.coins || 0} coins
               </span>
             </div>
+            <Separator orientation="vertical" className="h-4" />
+            <Button
+              onClick={() => setShowInventory(true)}
+              variant="outline"
+              size="sm"
+              className="flex items-center space-x-2"
+              data-testid="button-inventory"
+            >
+              <Package2 className="h-4 w-4" />
+              <span>Inventory</span>
+            </Button>
             <Separator orientation="vertical" className="h-4" />
             <span className="text-sm text-muted-foreground">
               {currentUser?.username || "Player"}

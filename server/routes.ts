@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertUserFruitSchema, insertMarketplaceListingSchema } from "@shared/schema";
+import { insertUserFruitSchema, insertMarketplaceListingSchema, insertTradeOfferSchema } from "@shared/schema";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -110,6 +110,130 @@ export function registerRoutes(app: Express): Server {
         success: false, 
         message: error.message || "Failed to purchase item" 
       });
+    }
+  });
+
+  // Trading routes
+  app.get("/api/trades", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const trades = await storage.getTradeOffers(req.user!.id);
+      res.json(trades);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch trade offers" });
+    }
+  });
+
+  app.get("/api/trades/:id", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const { id } = req.params;
+      const trade = await storage.getTradeOfferById(id);
+      
+      if (!trade) {
+        return res.status(404).json({ message: "Trade offer not found" });
+      }
+
+      // Only allow sender or receiver to view the trade
+      if (trade.senderId !== req.user!.id && trade.receiverId !== req.user!.id) {
+        return res.status(403).json({ message: "Not authorized to view this trade" });
+      }
+
+      res.json(trade);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch trade offer" });
+    }
+  });
+
+  app.post("/api/trades", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const tradeData = insertTradeOfferSchema.parse({
+        ...req.body,
+        senderId: req.user!.id,
+      });
+
+      // Prevent self-trading
+      if (tradeData.senderId === tradeData.receiverId) {
+        return res.status(400).json({ message: "Cannot trade with yourself" });
+      }
+      
+      const trade = await storage.createTradeOffer(tradeData);
+      res.status(201).json(trade);
+    } catch (error: any) {
+      res.status(400).json({ message: "Failed to create trade offer" });
+    }
+  });
+
+  app.post("/api/trades/:id/accept", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const { id } = req.params;
+      const trade = await storage.getTradeOfferById(id);
+      
+      if (!trade) {
+        return res.status(404).json({ message: "Trade offer not found" });
+      }
+
+      // Only receiver can accept a trade
+      if (trade.receiverId !== req.user!.id) {
+        return res.status(403).json({ message: "Only the receiver can accept this trade" });
+      }
+
+      if (trade.status !== 'pending') {
+        return res.status(400).json({ message: "Trade offer is no longer pending" });
+      }
+
+      // Use the transfer method to handle the full trade
+      const result = await storage.acceptTradeOfferWithTransfer(id);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Accept trade failed:', error);
+      res.status(400).json({ 
+        success: false, 
+        message: error.message || "Failed to accept trade" 
+      });
+    }
+  });
+
+  app.post("/api/trades/:id/reject", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const { id } = req.params;
+      const trade = await storage.getTradeOfferById(id);
+      
+      if (!trade) {
+        return res.status(404).json({ message: "Trade offer not found" });
+      }
+
+      // Only receiver can reject a trade
+      if (trade.receiverId !== req.user!.id) {
+        return res.status(403).json({ message: "Only the receiver can reject this trade" });
+      }
+
+      if (trade.status !== 'pending') {
+        return res.status(400).json({ message: "Trade offer is no longer pending" });
+      }
+
+      await storage.rejectTradeOffer(id);
+      res.json({ success: true, message: "Trade offer rejected" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to reject trade offer" });
     }
   });
 
