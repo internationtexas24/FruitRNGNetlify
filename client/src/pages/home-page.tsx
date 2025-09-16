@@ -128,6 +128,11 @@ export default function HomePage() {
     }
 
     setLastClickTime(now);
+    spawnFruit(x, y);
+  };
+
+  const spawnFruit = (x: number, y: number) => {
+    const now = Date.now();
     const fruit = generateRandomFruit();
 
     const spawnedFruit = {
@@ -193,7 +198,7 @@ export default function HomePage() {
           const x = Math.random() * (window.innerWidth - 200) + 100;
           const y = Math.random() * (window.innerHeight - 200) + 100;
           
-          handleFruitSpawn(x, y);
+          spawnFruit(x, y); // Use spawnFruit directly to bypass cooldown
         }, autoData.clickInterval);
         
         intervals.push(interval);
