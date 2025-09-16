@@ -134,6 +134,10 @@ export const insertTradeOfferSchema = createInsertSchema(tradeOffers).pick({
   receiverQuantity: true,
 });
 
+export const purchaseAutoclickerSchema = z.object({
+  autoclickerId: z.string().min(1, "Autoclicker ID is required"),
+});
+
 // Type definitions
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginUser = z.infer<typeof loginUserSchema>;
@@ -152,6 +156,8 @@ export type InsertUserAutoclicker = z.infer<typeof insertUserAutoclickerSchema>;
 
 export type TradeOffer = typeof tradeOffers.$inferSelect;
 export type InsertTradeOffer = z.infer<typeof insertTradeOfferSchema>;
+
+export type PurchaseAutoclicker = z.infer<typeof purchaseAutoclickerSchema>;
 
 // ALL RELATIONS DEFINED AFTER ALL TABLES TO AVOID TEMPORAL DEAD ZONE ISSUES
 export const usersRelations = relations(users, ({ many }) => ({

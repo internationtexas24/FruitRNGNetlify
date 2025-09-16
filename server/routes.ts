@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth } from "./auth";
 import { storage } from "./storage";
-import { insertUserFruitSchema, insertMarketplaceListingSchema, insertTradeOfferSchema } from "@shared/schema";
+import { insertUserFruitSchema, insertMarketplaceListingSchema, insertTradeOfferSchema, purchaseAutoclickerSchema } from "@shared/schema";
 
 export function registerRoutes(app: Express): Server {
   setupAuth(app);
@@ -110,6 +110,43 @@ export function registerRoutes(app: Express): Server {
         success: false, 
         message: error.message || "Failed to purchase item" 
       });
+    }
+  });
+
+  // Autoclicker shop routes
+  app.get("/api/autoclickers", async (req, res) => {
+    try {
+      const autoclickers = await storage.getAutoclickers();
+      res.json(autoclickers);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch autoclickers" });
+    }
+  });
+
+  app.post("/api/autoclickers", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    try {
+      const validatedData = purchaseAutoclickerSchema.parse(req.body);
+      const result = await storage.purchaseAutoclickerWithCoins(req.user!.id, validatedData.autoclickerId);
+      
+      if (result.success) {
+        res.status(200).json({ message: result.message });
+      } else {
+        // Map specific error messages to appropriate status codes
+        if (result.message === 'Autoclicker not found') {
+          res.status(404).json({ message: "Autoclicker not found" });
+        } else if (result.message === 'Insufficient coins') {
+          res.status(400).json({ message: "Insufficient coins to purchase autoclicker" });
+        } else {
+          res.status(400).json({ message: "Failed to purchase autoclicker" });
+        }
+      }
+    } catch (error: any) {
+      console.error('Autoclicker purchase failed:', error);
+      res.status(400).json({ message: "Failed to purchase autoclicker" });
     }
   });
 
