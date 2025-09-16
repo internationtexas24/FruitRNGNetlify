@@ -69,6 +69,14 @@ const DEFAULT_AUTOCLICKERS = [
     price: 5000,
     clicksPerSecond: 10,
     emoji: '💎'
+  },
+  {
+    id: 'auto-5',
+    name: 'Hyper Clicker',
+    description: 'Lightning fast - clicks 100 times per second (every 10ms)!',
+    price: 20000,
+    clicksPerSecond: 100,
+    emoji: '⚡⚡'
   }
 ];
 
