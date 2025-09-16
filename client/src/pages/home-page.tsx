@@ -6,6 +6,7 @@ import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { UserFruit } from "@shared/schema";
 import { GameArea } from "@/components/game-area";
 import { InventoryModal } from "@/components/inventory-modal";
+import { MarketplaceModal } from "@/components/marketplace-modal";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -15,7 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import { generateRandomFruit } from "@/lib/fruit-data";
 import { fruitDatabase } from "@/lib/fruit-data";
 import { offlineStorage } from "@/lib/offline-storage";
-import { Wifi, WifiOff, Coins, Zap, Play, Pause, RotateCcw, Package2 } from "lucide-react";
+import { Wifi, WifiOff, Coins, Zap, Play, Pause, RotateCcw, Package2, Store } from "lucide-react";
 
 export default function HomePage() {
   const { user, logoutMutation } = useAuth();
@@ -34,6 +35,7 @@ export default function HomePage() {
   
   const { toast } = useToast();
   const [showInventory, setShowInventory] = useState(false);
+  const [showMarketplace, setShowMarketplace] = useState(false);
   const [lastClickTime, setLastClickTime] = useState(0);
   const [spawnedFruits, setSpawnedFruits] = useState<
     Array<{
@@ -213,6 +215,17 @@ export default function HomePage() {
               <span>Inventory</span>
             </Button>
             <Separator orientation="vertical" className="h-4" />
+            <Button
+              onClick={() => setShowMarketplace(true)}
+              variant="outline"
+              size="sm"
+              className="flex items-center space-x-2"
+              data-testid="button-marketplace"
+            >
+              <Store className="h-4 w-4" />
+              <span>Marketplace</span>
+            </Button>
+            <Separator orientation="vertical" className="h-4" />
             <span className="text-sm text-muted-foreground">
               {currentUser?.username || "Player"}
             </span>
@@ -343,6 +356,14 @@ export default function HomePage() {
         open={showInventory}
         onOpenChange={setShowInventory}
         fruits={currentFruits}
+        isOfflineMode={isOfflineMode}
+      />
+
+      {/* Marketplace Modal */}
+      <MarketplaceModal
+        open={showMarketplace}
+        onOpenChange={setShowMarketplace}
+        userFruits={currentFruits}
         isOfflineMode={isOfflineMode}
       />
 
