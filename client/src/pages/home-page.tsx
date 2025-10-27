@@ -258,7 +258,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-background text-foreground overflow-hidden relative">
       {/* Mode Toggle Header */}
       <div className="fixed top-4 left-4 right-4 z-50 flex justify-between items-center">
-        <Card className="p-4">
+        <Card className="p-4" style={{ animation: 'rainbow-glow 3s ease-in-out infinite' }}>
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               {isOfflineMode ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
@@ -274,7 +274,7 @@ export default function HomePage() {
           </div>
         </Card>
 
-        <Card className="p-4">
+        <Card className="p-4" style={{ animation: 'rainbow-glow 3s ease-in-out infinite' }}>
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <Coins className="h-4 w-4 text-yellow-500" />
@@ -288,10 +288,11 @@ export default function HomePage() {
               variant="outline"
               size="sm"
               className="flex items-center space-x-2"
+              style={{ animation: 'rainbow-border 3s linear infinite' }}
               data-testid="button-inventory"
             >
               <Package2 className="h-4 w-4" />
-              <span>Inventory</span>
+              <span style={{ animation: 'rainbow-text 3s linear infinite' }}>Inventory</span>
             </Button>
             <Separator orientation="vertical" className="h-4" />
             <Button
@@ -299,10 +300,11 @@ export default function HomePage() {
               variant="outline"
               size="sm"
               className="flex items-center space-x-2"
+              style={{ animation: 'rainbow-border 3s linear infinite' }}
               data-testid="button-marketplace"
             >
               <Store className="h-4 w-4" />
-              <span>Marketplace</span>
+              <span style={{ animation: 'rainbow-text 3s linear infinite' }}>Marketplace</span>
             </Button>
             <Separator orientation="vertical" className="h-4" />
             <span className="text-sm text-muted-foreground">
@@ -316,9 +318,10 @@ export default function HomePage() {
             onClick={() => logoutMutation.mutate()}
             variant="outline"
             size="sm"
+            style={{ animation: 'rainbow-border 3s linear infinite' }}
             data-testid="button-logout"
           >
-            Logout
+            <span style={{ animation: 'rainbow-text 3s linear infinite' }}>Logout</span>
           </Button>
         )}
       </div>
@@ -326,7 +329,7 @@ export default function HomePage() {
       {/* Game Controls */}
       <div className="fixed top-20 right-4 z-50 space-y-2">
         {isOfflineMode && (
-          <Card className="p-4">
+          <Card className="p-4" style={{ animation: 'rainbow-glow 3s ease-in-out infinite' }}>
             <div className="flex items-center space-x-2">
               <Button
                 onClick={() => setAutoClickerActive(!autoClickerActive)}
@@ -351,7 +354,7 @@ export default function HomePage() {
         )}
 
         {/* Auto-clicker Shop - Now available for both modes */}
-        <Card className="p-4 max-w-xs">
+        <Card className="p-4 max-w-xs" style={{ animation: 'rainbow-glow 3s ease-in-out infinite' }}>
           <CardHeader className="p-0 mb-2">
             <CardTitle className="text-sm">Auto-Clicker Shop</CardTitle>
           </CardHeader>
@@ -448,7 +451,7 @@ export default function HomePage() {
 
       {/* Game Instructions */}
       <div className="fixed bottom-4 left-4 z-50">
-        <Card className="p-4 max-w-xs">
+        <Card className="p-4 max-w-xs" style={{ animation: 'rainbow-glow 3s ease-in-out infinite' }}>
           <p className="text-sm text-muted-foreground">
             Click anywhere or press <kbd className="px-1 bg-muted rounded">Space</kbd> to collect fruits!
             {isOfflineMode && " Use auto-clickers to collect automatically!"}
