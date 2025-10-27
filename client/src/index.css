@@ -105,7 +105,10 @@
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply font-sans antialiased text-foreground;
+    background: linear-gradient(-45deg, #ff0080, #ff8c00, #ffff00, #00ff88, #00b8ff, #8000ff, #ff0080);
+    background-size: 400% 400%;
+    animation: rainbow-bg 15s ease infinite;
   }
 }
 
@@ -125,6 +128,47 @@
   100% { transform: scale(1) rotate(360deg); opacity: 1; }
 }
 
+@keyframes rainbow-bg {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes rainbow-glow {
+  0% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.6), 0 0 40px rgba(255, 0, 0, 0.4); }
+  16% { box-shadow: 0 0 20px rgba(255, 165, 0, 0.6), 0 0 40px rgba(255, 165, 0, 0.4); }
+  33% { box-shadow: 0 0 20px rgba(255, 255, 0, 0.6), 0 0 40px rgba(255, 255, 0, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(0, 255, 0, 0.6), 0 0 40px rgba(0, 255, 0, 0.4); }
+  66% { box-shadow: 0 0 20px rgba(0, 0, 255, 0.6), 0 0 40px rgba(0, 0, 255, 0.4); }
+  83% { box-shadow: 0 0 20px rgba(138, 43, 226, 0.6), 0 0 40px rgba(138, 43, 226, 0.4); }
+  100% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.6), 0 0 40px rgba(255, 0, 0, 0.4); }
+}
+
+@keyframes rainbow-text {
+  0% { color: #ff0000; text-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+  16% { color: #ff8800; text-shadow: 0 0 10px rgba(255, 136, 0, 0.8); }
+  33% { color: #ffff00; text-shadow: 0 0 10px rgba(255, 255, 0, 0.8); }
+  50% { color: #00ff00; text-shadow: 0 0 10px rgba(0, 255, 0, 0.8); }
+  66% { color: #0088ff; text-shadow: 0 0 10px rgba(0, 136, 255, 0.8); }
+  83% { color: #8800ff; text-shadow: 0 0 10px rgba(136, 0, 255, 0.8); }
+  100% { color: #ff0000; text-shadow: 0 0 10px rgba(255, 0, 0, 0.8); }
+}
+
+@keyframes rainbow-border {
+  0% { border-color: #ff0000; }
+  16% { border-color: #ff8800; }
+  33% { border-color: #ffff00; }
+  50% { border-color: #00ff00; }
+  66% { border-color: #0088ff; }
+  83% { border-color: #8800ff; }
+  100% { border-color: #ff0000; }
+}
+
+@keyframes particle-burst {
+  0% { transform: translate(0, 0) scale(1); opacity: 1; }
+  100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+}
+
 .fruit-bg {
   position: absolute;
   animation: float 3s ease-in-out infinite;
@@ -134,16 +178,17 @@
 }
 
 .glassmorphism {
-  background: rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255, 0, 128, 0.2), rgba(0, 200, 255, 0.2));
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 2px solid;
+  animation: rainbow-border 3s linear infinite, rainbow-glow 3s ease-in-out infinite;
 }
 
-.rarity-common { border-color: var(--common); box-shadow: 0 0 10px rgba(156, 163, 175, 0.3); }
-.rarity-uncommon { border-color: var(--uncommon); box-shadow: 0 0 10px rgba(34, 197, 94, 0.3); }
-.rarity-rare { border-color: var(--rare); box-shadow: 0 0 10px rgba(59, 130, 246, 0.3); }
-.rarity-epic { border-color: var(--epic); box-shadow: 0 0 10px rgba(168, 85, 247, 0.3); }
-.rarity-legendary { border-color: var(--legendary); box-shadow: 0 0 15px rgba(251, 191, 36, 0.5); }
+.rarity-common { animation: rainbow-border 3s linear infinite, rainbow-glow 2s ease-in-out infinite; }
+.rarity-uncommon { animation: rainbow-border 3s linear infinite, rainbow-glow 2s ease-in-out infinite; }
+.rarity-rare { animation: rainbow-border 3s linear infinite, rainbow-glow 2s ease-in-out infinite; }
+.rarity-epic { animation: rainbow-border 3s linear infinite, rainbow-glow 2s ease-in-out infinite; }
+.rarity-legendary { animation: rainbow-border 2s linear infinite, rainbow-glow 1.5s ease-in-out infinite; }
 
 .click-area {
   cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="%23FF6B35" opacity="0.8"/><text x="16" y="20" text-anchor="middle" fill="white" font-size="16">🍎</text></svg>'), pointer;
@@ -158,18 +203,18 @@
 }
 
 .animate-fruit-spawn {
-  animation: fruit-spawn 0.8s ease-out;
+  animation: fruit-spawn 0.8s ease-out, rainbow-glow 2s ease-in-out infinite;
 }
 
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
-.text-common { color: var(--common); }
-.text-uncommon { color: var(--uncommon); }
-.text-rare { color: var(--rare); }
-.text-epic { color: var(--epic); }
-.text-legendary { color: var(--legendary); }
+.text-common { color: var(--common); animation: rainbow-text 3s linear infinite; }
+.text-uncommon { color: var(--uncommon); animation: rainbow-text 3s linear infinite; }
+.text-rare { color: var(--rare); animation: rainbow-text 3s linear infinite; }
+.text-epic { color: var(--epic); animation: rainbow-text 3s linear infinite; }
+.text-legendary { color: var(--legendary); animation: rainbow-text 2s linear infinite; }
 
 .bg-common { background-color: var(--common); }
 .bg-uncommon { background-color: var(--uncommon); }
